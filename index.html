@@ -272,6 +272,7 @@ table.league td.self{ background: var(--ink); }
 table.league td.correct{ color: var(--stamp-deep); font-weight:700; background: rgba(193,59,42,0.08); }
 table.league td.incorrect{ color: var(--ink-soft); }
 table.league td.pending{ color: var(--ink-faint); }
+.reset-block{ margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--line); }
 
 
 @media (max-width: 380px){
@@ -317,6 +318,7 @@ function defaultUi() {
     cardIndex: 0,
     assignments: {},        // targetId -> candidateId (editable until confirmed)
     confirmingExcludeId: null,
+    confirmingReset: false,
   };
 }
 let ui = defaultUi();
@@ -348,7 +350,7 @@ function shortName(name) {
 
 // ==================== Storage helpers (backed by Google Apps Script) ====================
 // ▼▼▼ デプロイ後、あなたのGASウェブアプリのURLに書き換えてください ▼▼▼
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwnPThjgbLvMeaQ9wHx4lKwlw3Fjsjprh7fdv0LRnAwuDA-tR8C3J8hfenW7SQ4OUnU1w/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzFDvDgiDJh0dgcoaxroOBNI55gkWZN69Db4nEO5Kp9L12gIDKJVMV2PLDvcIQ6bSqVQw/exec';
 // ▲▲▲ 例: https://script.google.com/macros/s/AKfycb.../exec ▲▲▲
 
 async function gasCall(params) {
@@ -468,11 +470,25 @@ async function pollTick() {
     } else if (me.id && cache.answeredIds.size < cache.participants.length) {
       await refreshAnsweredIds();
       await refreshRoster();
+      await refreshQuestions();
     } else if (me.id && myPhase() === 'waitingGuesses') {
       await refreshGuessedIdsList();
       await refreshRoster();
+      await refreshQuestions();
     } else if (me.id && myPhase() === 'results') {
       await refreshResultsData();
+      await refreshRoster();
+      await refreshQuestions();
+    }
+    // Someone used "最初からやり直す" from another device: the server side
+    // has been wiped clean (no questions, no participants) while this device
+    // still thinks a game is in progress. Snap back to the join screen.
+    if (me.id && !cache.questions && cache.participants.length === 0) {
+      me = { id: null, name: null };
+      clearMyIdLocally();
+      cache = defaultCache();
+      ui = defaultUi();
+      ui.loading = false;
     }
   } catch (e) { console.error(e); }
   const active = document.activeElement;
@@ -733,6 +749,31 @@ function computeAwards(guesserStats, targetStats, participants) {
   };
   const showMystery = !(exposedList.length && mysteryList.length && sameIds(exposedList, mysteryList));
   return { bestList, exposedList, mysteryList: showMystery ? mysteryList : [] };
+}
+
+// ==================== Actions: reset everything ====================
+function askResetGame() {
+  ui.confirmingReset = true;
+  renderApp();
+}
+function cancelResetGame() {
+  ui.confirmingReset = false;
+  renderApp();
+}
+let resetGameInFlight = false;
+async function confirmResetGame() {
+  if (resetGameInFlight) return;
+  resetGameInFlight = true;
+  ui.confirmingReset = false;
+  ui.loading = true; renderApp();
+  await kvResetAll();
+  me = { id: null, name: null };
+  clearMyIdLocally();
+  cache = defaultCache();
+  ui = defaultUi();
+  ui.loading = false;
+  resetGameInFlight = false;
+  renderApp();
 }
 
 // ==================== QR code ====================
@@ -1008,6 +1049,20 @@ screens.results = () => {
       ${renderAwardBlock('🎯', '探偵賞', bestList, item => `正解率 ${Math.round(item.acc * 100)}%（${item.correct}/${item.total}）`)}
       ${renderAwardBlock('📣', 'バレバレ賞', exposedList, item => `${item.correct}/${item.total}人に当てられました`)}
       ${renderAwardBlock('🕵️', 'ミステリー賞', mysteryList, item => `${item.correct}/${item.total}人しか当てられませんでした`)}
+
+      <div class="reset-block">
+        ${ui.confirmingReset ? `
+        <div class="exclude-confirm">
+          <div class="hint">全員の参加者・回答・推理データを消去して、参加登録からやり直します。この操作は取り消せません。よろしいですか？</div>
+          <div class="btn-row">
+            <button class="btn-outline" onclick="cancelResetGame()">キャンセル</button>
+            <button class="btn-primary" onclick="confirmResetGame()">最初からやり直す</button>
+          </div>
+        </div>
+        ` : `
+        <button class="btn-outline" onclick="askResetGame()">最初からやり直す</button>
+        `}
+      </div>
     </div>
   </div>`;
 };
