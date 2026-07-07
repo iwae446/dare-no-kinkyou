@@ -40,6 +40,15 @@ button{ font: inherit; -webkit-tap-highlight-color: transparent; }
 *:focus-visible{ outline: 3px solid var(--gold); outline-offset: 2px; }
 
 .container{ width:100%; max-width: 440px; }
+.container.wide-container{ max-width: 440px; }
+@media (min-width: 620px){
+  .container.wide-container{ max-width: 640px; }
+}
+@media (min-width: 860px){
+  .container.wide-container{ max-width: 820px; }
+  table.league{ font-size:13.5px; }
+  table.league th, table.league td{ padding:9px 12px; min-width:42px; }
+}
 
 .card{
   background: var(--card);
@@ -192,6 +201,25 @@ button{ font: inherit; -webkit-tap-highlight-color: transparent; }
   padding: 12px 8px; font-weight:600; font-size:13.5px; color: var(--ink);
   cursor:pointer; transition: all .2s ease;
 }
+.guess-chip.chosen{
+  border-style: solid; border-color: var(--stamp); background: rgba(193,59,42,0.1);
+  color: var(--stamp-deep); font-weight:700;
+}
+.guess-chip.elsewhere{ opacity:0.55; }
+.chip-note{ display:block; font-size:10.5px; font-weight:500; color: var(--ink-faint); margin-top:2px; }
+
+/* Swipeable card navigation */
+.dots-row{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom: 6px; }
+.dot{
+  width:28px; height:28px; border-radius:50%; border:1.5px dashed var(--line);
+  background: var(--card); color: var(--ink-soft); font-size:12px; font-weight:700;
+  cursor:pointer; padding:0;
+}
+.dot.assigned{ border-style:solid; border-color: var(--stamp); background: rgba(193,59,42,0.08); color: var(--stamp-deep); }
+.dot.current{ box-shadow: 0 0 0 2px var(--ink); }
+.nav-row{ display:flex; gap:10px; margin: 14px 0 10px; }
+.nav-row .btn-outline{ flex:1; margin-top:0; }
+#guessCardArea{ touch-action: pan-y; }
 
 /* Stamp reveal */
 .stamp-wrap{ display:flex; justify-content:center; margin: 18px 0 10px; }
@@ -220,6 +248,9 @@ button{ font: inherit; -webkit-tap-highlight-color: transparent; }
 .score-unit{ font-size:14px; font-weight:500; color: var(--ink-soft); margin-left:6px; }
 .award-row{ background: var(--paper-deep); border-radius:14px; padding: 14px; text-align:center; margin-top: 14px; }
 .award-badge{ font-size:13px; font-weight:700; color: var(--ink-soft); margin-bottom:4px; }
+.award-entries{ display:flex; flex-direction:column; gap:8px; }
+.award-entry{ padding-top:6px; }
+.award-entry + .award-entry{ border-top: 1px dashed var(--line); }
 .award-name{ font-family:'Kaisei Tokumin', serif; font-size:19px; font-weight:700; }
 .award-sub{ font-size:13px; color: var(--ink-soft); margin-top:2px; }
 
@@ -277,9 +308,8 @@ function defaultUi() {
     copied: false,
     answerError: null,
     guessQueue: [],
-    guessIndex: 0,
-    assignments: {},        // targetId -> {guessedId, correct}
-    remainingCandidates: [],
+    cardIndex: 0,
+    assignments: {},        // targetId -> candidateId (editable until confirmed)
     confirmingReset: false,
   };
 }
@@ -385,6 +415,7 @@ function myPhase() {
   if (!cache.answeredIds.has(me.id)) return 'answering';
   if (cache.answeredIds.size < cache.participants.length) return 'waitingAnswers';
   if (!cache.guessedIds.has(me.id)) return 'guessing';
+  if (cache.guessedIds.size < cache.participants.length) return 'waitingGuesses';
   return 'results';
 }
 
@@ -411,6 +442,9 @@ async function pollTick() {
     } else if (me.id && cache.answeredIds.size < cache.participants.length) {
       await refreshAnsweredIds();
       await refreshRoster();
+    } else if (me.id && myPhase() === 'waitingGuesses') {
+      await refreshGuessedIdsList();
+      await refreshRoster();
     } else if (me.id && myPhase() === 'results') {
       await refreshResultsData();
     }
@@ -418,6 +452,10 @@ async function pollTick() {
   const active = document.activeElement;
   const isTyping = active && app.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
   if (!isTyping) renderApp();
+}
+async function refreshGuessedIdsList() {
+  const keys = await kvListKeys('dk_guesses:');
+  cache.guessedIds = new Set(keys.map(k => k.replace('dk_guesses:', '')));
 }
 
 // ==================== Actions: join / lobby ====================
@@ -517,37 +555,48 @@ async function triggerGuessSetup() {
     queue.push({ pid: p.id, answers: ans || {} });
   }
   ui.guessQueue = shuffle(queue);
-  ui.guessIndex = 0;
+  ui.cardIndex = 0;
   ui.assignments = {};
-  ui.remainingCandidates = others.map(p => p.id);
   ui.loading = false;
   guessSetupInFlight = false;
   renderApp();
 }
-function makeGuessChoice(candidateId) {
-  const idx = ui.guessIndex;
-  const target = ui.guessQueue[idx];
-  if (ui.assignments[target.pid]) return;
-  const correct = candidateId === target.pid;
-  ui.assignments[target.pid] = { guessedId: candidateId, correct };
-  ui.remainingCandidates = ui.remainingCandidates.filter(id => id !== target.pid);
+function goToPrevCard() {
+  if (ui.cardIndex > 0) { ui.cardIndex--; renderApp(); }
+}
+function goToNextCard() {
+  if (ui.cardIndex < ui.guessQueue.length - 1) { ui.cardIndex++; renderApp(); }
+}
+function jumpToCard(i) {
+  if (i >= 0 && i < ui.guessQueue.length) { ui.cardIndex = i; renderApp(); }
+}
+function chooseCandidateForCurrentCard(candidateId) {
+  const target = ui.guessQueue[ui.cardIndex];
+  const targetId = target.pid;
+  // If this candidate is already assigned to a different set, free them up from there (steal).
+  Object.keys(ui.assignments).forEach(tid => {
+    if (tid !== targetId && ui.assignments[tid] === candidateId) delete ui.assignments[tid];
+  });
+  // Tapping the already-chosen candidate for this card un-assigns it.
+  if (ui.assignments[targetId] === candidateId) {
+    delete ui.assignments[targetId];
+  } else {
+    ui.assignments[targetId] = candidateId;
+  }
   renderApp();
 }
-async function nextGuessSet() {
-  if (ui.guessIndex + 1 < ui.guessQueue.length) {
-    ui.guessIndex++;
-    renderApp();
-  } else {
-    ui.loading = true; renderApp();
-    const payload = {};
-    Object.keys(ui.assignments).forEach(targetId => {
-      payload[targetId] = ui.assignments[targetId].guessedId;
-    });
-    const ok = await kvSet('dk_guesses:' + me.id, payload);
-    if (ok) cache.guessedIds.add(me.id);
-    ui.loading = false;
-    renderApp();
-  }
+async function confirmAllGuesses() {
+  if (Object.keys(ui.assignments).length < ui.guessQueue.length) return;
+  ui.loading = true; renderApp();
+  const ok = await kvSet('dk_guesses:' + me.id, ui.assignments);
+  if (ok) cache.guessedIds.add(me.id);
+  ui.loading = false;
+  renderApp();
+}
+async function manualRefreshWaitingGuesses() {
+  await refreshGuessedIdsList();
+  await refreshRoster();
+  renderApp();
 }
 
 // ==================== Actions: results ====================
@@ -590,21 +639,37 @@ function computeResults() {
   return { matrix, guesserStats, targetStats };
 }
 function computeAwards(guesserStats, targetStats, participants) {
-  let best = null, mostExposed = null, mostMystery = null;
+  let bestAcc = -1, exposedMax = -1, mysteryMin = Infinity;
+  let bestList = [], exposedList = [], mysteryList = [];
   participants.forEach(p => {
     const gs = guesserStats[p.id];
     if (gs.submitted && gs.total > 0) {
       const acc = gs.correct / gs.total;
-      if (!best || acc > best.acc) best = { p, acc, correct: gs.correct, total: gs.total };
+      const entry = { p, acc, correct: gs.correct, total: gs.total };
+      if (acc > bestAcc) { bestAcc = acc; bestList = [entry]; }
+      else if (acc === bestAcc) { bestList.push(entry); }
     }
     const ts = targetStats[p.id];
     if (ts.total > 0) {
       const exp = ts.correct / ts.total;
-      if (!mostExposed || exp > mostExposed.exp) mostExposed = { p, exp, correct: ts.correct, total: ts.total };
-      if (!mostMystery || exp < mostMystery.exp) mostMystery = { p, exp, correct: ts.correct, total: ts.total };
+      const entry = { p, exp, correct: ts.correct, total: ts.total };
+      if (exp > exposedMax) { exposedMax = exp; exposedList = [entry]; }
+      else if (exp === exposedMax) { exposedList.push(entry); }
+      if (exp < mysteryMin) { mysteryMin = exp; mysteryList = [entry]; }
+      else if (exp === mysteryMin) { mysteryList.push(entry); }
     }
   });
-  return { best, mostExposed, mostMystery };
+  // If everyone tied at the same exposure ratio, exposedList and mysteryList would be
+  // the exact same people — showing the same names under two different awards is confusing,
+  // so drop the mystery badge in that case.
+  const sameIds = (a, b) => {
+    if (a.length !== b.length) return false;
+    const idsA = a.map(x => x.p.id).sort().join(',');
+    const idsB = b.map(x => x.p.id).sort().join(',');
+    return idsA === idsB;
+  };
+  const showMystery = !(exposedList.length && mysteryList.length && sameIds(exposedList, mysteryList));
+  return { bestList, exposedList, mysteryList: showMystery ? mysteryList : [] };
 }
 async function resetSession() {
   ui.loading = true; renderApp();
@@ -749,54 +814,103 @@ screens.waitingAnswers = () => `
   </div>
 </div>`;
 
+screens.waitingGuesses = () => `
+<div class="container">
+  <div class="card center-card">
+    ${backLinkHtml()}
+    <div class="eyebrow">推理タイム</div>
+    <h2 class="section-title">他のメンバーを待っています…</h2>
+    <div class="score-big small-score">${cache.guessedIds.size} / ${cache.participants.length}</div>
+    <p class="hint">全員の推理が確定すると、自動で結果発表になります。</p>
+    <button class="btn-outline" onclick="manualRefreshWaitingGuesses()">更新する</button>
+  </div>
+</div>`;
+
 screens.guessing = () => {
-  const idx = ui.guessIndex;
+  const idx = ui.cardIndex;
   const total = ui.guessQueue.length;
   const target = ui.guessQueue[idx];
-  const done = ui.assignments[target.pid];
   const qs = cache.questions;
-  const candHtml = ui.remainingCandidates.map(id => {
-    const p = cache.participants.find(x => x.id === id);
-    return `<button class="guess-chip" onclick="makeGuessChoice('${id}')">${escapeHtml(p ? p.name : '?')}</button>`;
+  const assignedCount = Object.keys(ui.assignments).length;
+  const others = cache.participants.filter(p => p.id !== me.id);
+
+  const dotsHtml = ui.guessQueue.map((t, i) => {
+    const isAssigned = ui.assignments[t.pid] !== undefined;
+    const isCurrent = i === idx;
+    return `<button class="dot ${isCurrent ? 'current' : ''} ${isAssigned ? 'assigned' : ''}" onclick="jumpToCard(${i})">${i + 1}</button>`;
   }).join('');
-  let revealHtml = '';
-  if (done) {
-    const trueP = cache.participants.find(x => x.id === target.pid);
-    revealHtml = `
-      <div class="stamp-wrap"><div class="stamp ${done.correct ? '' : 'miss'}">${done.correct ? '正解！' : 'ハズレ'}</div></div>
-      <p class="reveal-text">答えは <strong>${escapeHtml(trueP.name)}</strong> さんでした</p>
-      <button class="btn-primary" onclick="nextGuessSet()">${idx + 1 === total ? '結果を見る' : '次のセットへ'}</button>
-    `;
-  }
-  const progressPct = Math.round(((idx + (done ? 1 : 0)) / total) * 100);
+
+  const candHtml = others.map(p => {
+    const assignedTo = Object.keys(ui.assignments).find(tid => ui.assignments[tid] === p.id);
+    const isHere = assignedTo === target.pid;
+    const isElsewhere = assignedTo && assignedTo !== target.pid;
+    let cls = 'guess-chip';
+    if (isHere) cls += ' chosen';
+    if (isElsewhere) cls += ' elsewhere';
+    let note = '';
+    if (isElsewhere) {
+      const elsewhereIdx = ui.guessQueue.findIndex(t => t.pid === assignedTo) + 1;
+      note = `<span class="chip-note">（${elsewhereIdx}番に割当て中）</span>`;
+    }
+    return `<button class="${cls}" onclick="chooseCandidateForCurrentCard('${p.id}')">${escapeHtml(p.name)}${note}</button>`;
+  }).join('');
+
   return `
   <div class="container">
     <div class="card">
       ${backLinkHtml()}
-      <div class="eyebrow">第 ${idx + 1} セット / 全 ${total} セット</div>
-      <div class="progress-track"><div class="progress-fill" style="width:${progressPct}%"></div></div>
-      <p class="hint">この3つの答えは、だれのもの？</p>
-      <div class="answer-set">
-        ${qs.map(q => {
-          const ans = (target.answers[q.id] || '').trim();
-          return `
-          <div class="set-item">
-            <div class="q-label">Q. ${escapeHtml(q.text)}</div>
-            <div class="answer-card small-answer">${ans ? '「' + escapeHtml(ans) + '」' : '<span class="no-answer">（無回答）</span>'}</div>
-          </div>`;
-        }).join('')}
+      <div class="eyebrow">推理タイム</div>
+      <p class="hint">左右にスワイプ、または番号タップで自由に見比べながら選べます。あとで変更もできます。</p>
+      <div class="dots-row">${dotsHtml}</div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.round((assignedCount / total) * 100)}%"></div></div>
+
+      <div id="guessCardArea">
+        <div class="q-label">第 ${idx + 1} セット / 全 ${total} セット</div>
+        <div class="answer-set">
+          ${qs.map(q => {
+            const ans = (target.answers[q.id] || '').trim();
+            return `
+            <div class="set-item">
+              <div class="q-label">Q. ${escapeHtml(q.text)}</div>
+              <div class="answer-card small-answer">${ans ? '「' + escapeHtml(ans) + '」' : '<span class="no-answer">（無回答）</span>'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <p class="hint">これは誰だと思う？（タップで選択／もう一度タップで解除）</p>
+        <div class="guess-grid">${candHtml}</div>
       </div>
-      ${done ? '' : `<div class="guess-grid">${candHtml}</div>`}
-      ${revealHtml}
+
+      <div class="nav-row">
+        <button class="btn-outline" ${idx === 0 ? 'disabled' : ''} onclick="goToPrevCard()">← 前へ</button>
+        <button class="btn-outline" ${idx === total - 1 ? 'disabled' : ''} onclick="goToNextCard()">次へ →</button>
+      </div>
+
+      <div class="count-note">割り当て済み：${assignedCount} / ${total}</div>
+      <button class="btn-primary" ${assignedCount < total ? 'disabled' : ''} onclick="confirmAllGuesses()">${assignedCount < total ? 'あと' + (total - assignedCount) + '人分選んでください' : '全員の推理を確定する'}</button>
     </div>
   </div>`;
 };
 
+function renderAwardBlock(icon, label, list, statText) {
+  if (!list.length) return '';
+  return `
+    <div class="award-row">
+      <div class="award-badge">${icon} ${label}</div>
+      <div class="award-entries">
+        ${list.map(item => `
+          <div class="award-entry">
+            <div class="award-name">${escapeHtml(item.p.name)}さん</div>
+            <div class="award-sub">${statText(item)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
 screens.results = () => {
   const { matrix, guesserStats, targetStats } = computeResults();
-  const { best, mostExposed, mostMystery } = computeAwards(guesserStats, targetStats, cache.participants);
+  const { bestList, exposedList, mysteryList } = computeAwards(guesserStats, targetStats, cache.participants);
   const myStats = guesserStats[me.id] || { correct: 0, total: 0 };
-  const submittedCount = Object.values(guesserStats).filter(s => s.submitted).length;
 
   const tableHead = `<tr><th class="corner">予想＼対象</th>${cache.participants.map(p => `<th>${escapeHtml(shortName(p.name))}</th>`).join('')}</tr>`;
   const tableRows = cache.participants.map(g => {
@@ -808,23 +922,22 @@ screens.results = () => {
     return `<tr><th class="row-head">${escapeHtml(g.name)}</th>${cells}</tr>`;
   }).join('');
 
-  const showMystery = mostMystery && (!mostExposed || mostMystery.p.id !== mostExposed.p.id);
-
   return `
-  <div class="container">
-    <div class="card">
+  <div class="container wide-container">
+    <div class="card wide-card">
       ${backLinkHtml()}
       <div class="eyebrow">RESULT</div>
       <h2 class="display-title">結果発表</h2>
-      <p class="hint">予想が終わった人：${submittedCount} / ${cache.participants.length}人</p>
+      <p class="hint">全員の推理が確定しました！</p>
 
       ${myStats.total > 0 ? `<div class="score-big small-score">${myStats.correct} / ${myStats.total}<span class="score-unit">あなたの正解</span></div>` : ''}
 
-      ${best ? `<div class="award-row"><div class="award-badge">🎯 探偵賞</div><div class="award-name">${escapeHtml(best.p.name)}さん</div><div class="award-sub">正解率 ${Math.round(best.acc * 100)}%（${best.correct}/${best.total}）</div></div>` : ''}
-      ${mostExposed ? `<div class="award-row"><div class="award-badge">📣 バレバレ賞</div><div class="award-name">${escapeHtml(mostExposed.p.name)}さん</div><div class="award-sub">${mostExposed.correct}/${mostExposed.total}人に当てられました</div></div>` : ''}
-      ${showMystery ? `<div class="award-row"><div class="award-badge">🕵️ ミステリー賞</div><div class="award-name">${escapeHtml(mostMystery.p.name)}さん</div><div class="award-sub">${mostMystery.correct}/${mostMystery.total}人しか当てられませんでした</div></div>` : ''}
+      ${renderAwardBlock('🎯', '探偵賞', bestList, item => `正解率 ${Math.round(item.acc * 100)}%（${item.correct}/${item.total}）`)}
+      ${renderAwardBlock('📣', 'バレバレ賞', exposedList, item => `${item.correct}/${item.total}人に当てられました`)}
+      ${renderAwardBlock('🕵️', 'ミステリー賞', mysteryList, item => `${item.correct}/${item.total}人しか当てられませんでした`)}
 
       <div class="qa-label table-title">全員の対戦表（縦＝予想した人／横＝答えた人）</div>
+      <p class="hint">スマホを横向きにすると見やすくなります</p>
       <div class="league-wrap">
         <table class="league">${tableHead}${tableRows}</table>
       </div>
@@ -857,15 +970,37 @@ function renderScreen() {
     if (ui.guessQueue.length === 0) { triggerGuessSetup(); return screens.loading(); }
     return screens.guessing();
   }
+  if (phase === 'waitingGuesses') return screens.waitingGuesses();
   if (phase === 'results') {
     if (!cache.resultsLoaded) { triggerResultsLoad(); return screens.loading(); }
     return screens.results();
   }
   return screens.loading();
 }
+function attachSwipeHandlers() {
+  const el = document.getElementById('guessCardArea');
+  if (!el) return;
+  let startX = null, startY = null;
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (startX === null) return;
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    startX = null; startY = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) goToNextCard(); else goToPrevCard();
+  }, { passive: true });
+}
 function renderApp() {
   app.innerHTML = renderScreen();
   if (!ui.loading && myPhase() === 'join') setupQrCode();
+  if (!ui.loading && myPhase() === 'guessing' && ui.guessQueue.length > 0) attachSwipeHandlers();
 }
 
 init();
