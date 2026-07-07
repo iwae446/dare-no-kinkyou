@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>だれの近況？</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
+
+:root{
+  --paper:#F6EFDD;
+  --paper-deep:#EBDFC1;
+  --card:#FFFBF1;
+  --line:#D9C9A0;
+  --ink:#2B3A55;
+  --ink-soft:#5B6B87;
+  --ink-faint:#95A0B2;
+  --stamp:#C13B2A;
+  --stamp-deep:#8F2C1F;
+  --gold:#D89B3C;
+  --shadow: rgba(43,58,85,0.16);
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  background: var(--paper);
+  font-family:'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', sans-serif;
+  color: var(--ink);
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+  line-height:1.65;
+  -webkit-tap-highlight-color: transparent;
+}
+button{ font: inherit; -webkit-tap-highlight-color: transparent; }
+*:focus-visible{ outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.container{ width:100%; max-width: 440px; }
+
+.card{
+  background: var(--card);
+  border-radius: 20px;
+  padding: 28px 22px 26px 40px;
+  box-shadow: 0 14px 34px var(--shadow), 0 1px 0 var(--line);
+  position: relative;
+}
+.card::before{
+  content:'';
+  position:absolute;
+  left: 22px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: var(--stamp);
+  opacity: 0.5;
+}
+.card.center-card{ text-align:center; }
+.back-link{
+  position:absolute; top:14px; right:16px;
+  background:none; border:none; color: var(--ink-soft);
+  font-size:12px; font-weight:700; cursor:pointer; padding:4px 6px;
+}
+.back-link:active{ opacity:0.6; }
+
+.eyebrow{ font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 6px; }
+.display-title{ font-family:'Kaisei Tokumin', serif; font-weight: 700; font-size: 28px; margin: 0 0 12px; letter-spacing: 0.01em; }
+.section-title{ font-family:'Kaisei Tokumin', serif; font-weight: 700; font-size: 21px; margin: 0 0 10px; }
+.lead{ margin: 0 0 20px; color: var(--ink); font-size: 15px; }
+.hint{ margin: 0 0 16px; color: var(--ink-soft); font-size: 13.5px; }
+.hint code{ background: var(--paper-deep); padding:2px 5px; border-radius:5px; font-size:12px; }
+.error-text{ color: var(--stamp-deep); font-size: 13.5px; margin: -8px 0 14px; font-weight:600; }
+
+.title-stamp{
+  width: 54px; height: 54px;
+  border-radius: 46% 54% 52% 48% / 55% 45% 58% 42%;
+  border: 3px solid var(--stamp);
+  color: var(--stamp);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Kaisei Tokumin', serif; font-weight:700; font-size: 22px;
+  transform: rotate(-8deg);
+  margin: 0 auto 14px;
+}
+.card:not(.center-card) .title-stamp{ margin: 0 0 14px; }
+
+.btn-primary{
+  display:block; width:100%;
+  background: var(--ink); color: var(--paper);
+  border:none; border-radius:999px;
+  padding: 14px 22px; font-weight:700; font-size:16px;
+  cursor:pointer; min-height:50px;
+  transition: transform .15s ease, opacity .15s ease;
+}
+.btn-primary:disabled{ opacity:0.35; cursor:not-allowed; }
+.btn-primary:not(:disabled):active{ transform: scale(0.97); }
+.input-row .btn-primary{ width:auto; flex:0 0 auto; padding:12px 18px; }
+
+.btn-outline{
+  display:block; width:100%;
+  background: transparent; border: 1.5px solid var(--ink); color: var(--ink);
+  border-radius:999px; padding: 12px 18px; font-weight:700; font-size:14.5px;
+  cursor:pointer; white-space:nowrap; margin-top: 10px;
+}
+.btn-outline:active{ transform: scale(0.97); }
+.input-row .btn-outline{ width:auto; flex:0 0 auto; margin-top:0; }
+.refresh-btn{ margin-top: 12px; }
+.reset-btn{ margin-top: 18px; opacity:0.7; }
+
+.btn-row{ display:flex; gap:10px; margin-top: 6px; }
+.btn-row .btn-outline{ flex: 1; margin-top:0; }
+.btn-row .btn-primary{ flex: 1; }
+
+.input-row{ display:flex; gap:8px; margin-bottom: 10px; }
+.input-row input{
+  flex:1; min-width:0;
+  padding: 12px 12px; border: 1.5px solid var(--line); border-radius:10px;
+  font: inherit; font-size:15px; background: var(--paper);
+  color: var(--ink);
+}
+
+/* QR / join */
+.qr-box{
+  background: var(--paper-deep); border-radius:16px; padding:18px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  margin-bottom: 20px;
+}
+.qr-canvas{ background:#fff; padding:8px; border-radius:10px; line-height:0; }
+.qr-box .input-row{ width:100%; margin-bottom:0; }
+.qr-caption{ font-size:12.5px; color: var(--ink-soft); text-align:center; }
+.link-row{ display:flex; gap:8px; width:100%; }
+.link-input{
+  flex:1; min-width:0; padding:10px 10px; border:1.5px solid var(--line);
+  border-radius:8px; font-size:12px; background: var(--card); color: var(--ink-soft);
+}
+.link-row .btn-outline{ margin-top:0; }
+
+.resume-block{ margin-bottom: 16px; }
+.chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 14px; }
+.chip{ border-radius:999px; padding:9px 16px; font-size:14px; font-weight:600; }
+.resume-chip{ border:1.5px solid var(--stamp); background: rgba(193,59,42,0.07); color: var(--stamp-deep); cursor:pointer; }
+.static-chip{ border:1.5px dashed var(--line); background: var(--card); color: var(--ink); }
+
+.count-note{ font-size:13px; color: var(--ink-soft); margin: 6px 0 16px; }
+
+/* Preset question picker */
+.preset-list{ display:flex; flex-direction:column; gap:9px; margin-bottom: 14px; }
+.preset-item{
+  display:flex; align-items:flex-start; gap:10px;
+  border: 1.5px dashed var(--line); border-radius:14px;
+  padding: 12px 12px; cursor:pointer; background: var(--card);
+  transition: border-color .15s ease, background .15s ease, opacity .15s ease;
+}
+.preset-item.selected{ border-style: solid; border-color: var(--stamp); background: rgba(193,59,42,0.07); }
+.preset-item.locked{ opacity:0.4; cursor:default; }
+.preset-check{
+  width:20px; height:20px; border-radius:6px; border:1.5px solid var(--line);
+  flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  font-size:13px; color: var(--stamp-deep); font-weight:700; margin-top:1px;
+}
+.preset-item.selected .preset-check{ border-color: var(--stamp); }
+.preset-q{ font-size:14.5px; font-weight:700; color: var(--ink); }
+.preset-hint{ font-size:12px; color: var(--ink-soft); margin-top:2px; }
+
+/* Answer form */
+.qa-block{ margin-bottom: 16px; }
+.qa-label{ display:block; font-size:14px; font-weight:700; margin-bottom:6px; }
+.table-title{ margin-top: 6px; }
+.ruled-input{
+  width:100%; border: 1.5px solid var(--line); border-radius:8px;
+  padding: 6px 10px; font: inherit; font-size:15px; color: var(--ink);
+  line-height:28px; resize:vertical;
+  background-color: var(--card);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--line) 27px, var(--line) 28px);
+}
+
+/* Progress + answer cards */
+.progress-track{ height:6px; background: var(--paper-deep); border-radius:6px; overflow:hidden; margin: 10px 0 18px; }
+.progress-fill{ height:100%; background: var(--stamp); transition: width .4s ease; border-radius:6px; }
+.q-label{ font-size:13.5px; font-weight:700; color: var(--ink-soft); margin-bottom:8px; }
+.answer-card{ background: var(--paper-deep); border: 1.5px dashed var(--line); border-radius:14px; padding: 20px 18px; font-size:18px; font-weight:500; margin-bottom: 16px; color: var(--ink); }
+.answer-set{ display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+.set-item .small-answer{ padding:14px 16px; font-size:15.5px; margin-bottom:0; }
+.no-answer{ color: var(--ink-faint); font-style: normal; }
+
+/* Guessing grid */
+.guess-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:9px; margin-bottom:6px; }
+.guess-chip{
+  border: 1.5px dashed var(--line); background: var(--card); border-radius:14px;
+  padding: 12px 8px; font-weight:600; font-size:13.5px; color: var(--ink);
+  cursor:pointer; transition: all .2s ease;
+}
+
+/* Stamp reveal */
+.stamp-wrap{ display:flex; justify-content:center; margin: 18px 0 10px; }
+.stamp{
+  width:118px; height:118px;
+  border-radius: 46% 54% 52% 48% / 55% 45% 58% 42%;
+  border: 4px solid var(--stamp); color: var(--stamp);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Kaisei Tokumin', serif; font-weight:700; font-size:21px;
+  background: radial-gradient(circle at 50% 40%, rgba(193,59,42,0.07), transparent 70%);
+  transform: rotate(-10deg) scale(0);
+  animation: stampIn .5s cubic-bezier(.2,1.4,.4,1) forwards;
+}
+.stamp.miss{ border-color: var(--ink-soft); color: var(--ink-soft); background: radial-gradient(circle at 50% 40%, rgba(91,107,135,0.07), transparent 70%); }
+@keyframes stampIn{
+  0%{ transform: rotate(-10deg) scale(0); opacity:0; }
+  60%{ transform: rotate(-10deg) scale(1.15); opacity:1; }
+  100%{ transform: rotate(-10deg) scale(1); opacity:1; }
+}
+@media (prefers-reduced-motion: reduce){ .stamp{ animation:none; transform: rotate(-10deg) scale(1); } }
+.reveal-text{ text-align:center; font-size:15px; margin: 0 0 18px; }
+
+/* Score & awards */
+.score-big{ font-family:'Kaisei Tokumin', serif; font-weight:700; font-size:44px; color: var(--stamp-deep); margin: 6px 0 4px; }
+.score-big.small-score{ font-size:34px; }
+.score-unit{ font-size:14px; font-weight:500; color: var(--ink-soft); margin-left:6px; }
+.award-row{ background: var(--paper-deep); border-radius:14px; padding: 14px; text-align:center; margin-top: 14px; }
+.award-badge{ font-size:13px; font-weight:700; color: var(--ink-soft); margin-bottom:4px; }
+.award-name{ font-family:'Kaisei Tokumin', serif; font-size:19px; font-weight:700; }
+.award-sub{ font-size:13px; color: var(--ink-soft); margin-top:2px; }
+
+/* League table */
+.league-wrap{ overflow-x:auto; margin: 10px 0 4px; border-radius:10px; }
+table.league{ border-collapse:collapse; font-size:12px; width:100%; }
+table.league th, table.league td{ border:1px solid var(--line); padding:7px 9px; text-align:center; min-width:36px; }
+table.league th{ background: var(--paper-deep); font-weight:700; white-space:nowrap; font-size:11.5px; }
+table.league th.row-head{ text-align:left; background: var(--card); }
+table.league th.corner{ font-size:10px; color: var(--ink-soft); font-weight:600; }
+table.league td.self{ background: var(--ink); }
+table.league td.correct{ color: var(--stamp-deep); font-weight:700; background: rgba(193,59,42,0.08); }
+table.league td.incorrect{ color: var(--ink-soft); }
+table.league td.pending{ color: var(--ink-faint); }
+
+.reset-confirm{ margin-top: 18px; background: var(--paper-deep); border-radius:14px; padding:14px; }
+
+@media (max-width: 380px){
+  .card{ padding: 24px 16px 22px 34px; }
+  .display-title{ font-size:24px; }
+  .score-big{ font-size:38px; }
+}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ==================== Data ====================
+const FIXED_QUESTIONS = [
+  { id: 'q1', text: '最近ハマっていることは何ですか' },
+  { id: 'q2', text: '最近人に喜ばれたことは何ですか' },
+  { id: 'q3', text: '大学入学時に戻れたら、最初に何をしますか' },
+];
+
+// ==================== Global (per-device) state ====================
+let me = { id: null, name: null };
+
+function defaultCache() {
+  return {
+    participants: [],       // [{id,name,joinedAt}]
+    questions: null,        // [{id,text}] length 3, once game started
+    answeredIds: new Set(), // ids who have submitted answers
+    guessedIds: new Set(),  // ids who have submitted guesses
+    allGuesses: {},         // { guesserId: { targetId: guessedId } }
+    resultsLoaded: false,
+  };
+}
+let cache = defaultCache();
+
+function defaultUi() {
+  return {
+    loading: true,
+    joinError: null,
+    copied: false,
+    answerError: null,
+    guessQueue: [],
+    guessIndex: 0,
+    assignments: {},        // targetId -> {guessedId, correct}
+    remainingCandidates: [],
+    confirmingReset: false,
+  };
+}
+let ui = defaultUi();
+
+let guessSetupInFlight = false;
+let resultsLoadInFlight = false;
+let pollTimer = null;
+
+const app = document.getElementById('app');
+
+// ==================== Helpers ====================
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, function (ch) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return map[ch];
+  });
+}
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function shortName(name) {
+  return name.length > 4 ? name.slice(0, 3) + '…' : name;
+}
+
+// ==================== Storage helpers (backed by Google Apps Script) ====================
+// ▼▼▼ デプロイ後、あなたのGASウェブアプリのURLに書き換えてください ▼▼▼
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwnPThjgbLvMeaQ9wHx4lKwlw3Fjsjprh7fdv0LRnAwuDA-tR8C3J8hfenW7SQ4OUnU1w/exec';
+// ▲▲▲ 例: https://script.google.com/macros/s/AKfycb.../exec ▲▲▲
+
+async function gasCall(params) {
+  const p = Object.assign({ _ts: Date.now() }, params);
+  const url = GAS_ENDPOINT + '?' + new URLSearchParams(p).toString();
+  const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+  if (!res.ok) throw new Error('GAS request failed: ' + res.status);
+  return res.json();
+}
+async function kvGet(key) {
+  try {
+    const r = await gasCall({ action: 'get', key });
+    if (!r || r.value === null || r.value === undefined) return null;
+    return JSON.parse(r.value);
+  } catch (e) { console.error('kvGet failed', key, e); return null; }
+}
+async function kvSet(key, value) {
+  try {
+    const r = await gasCall({ action: 'set', key, value: JSON.stringify(value) });
+    return !!(r && r.ok);
+  } catch (e) { console.error('kvSet failed', key, e); return false; }
+}
+async function kvDelete(key) {
+  try { await gasCall({ action: 'delete', key }); } catch (e) { /* ignore */ }
+}
+async function kvListKeys(prefix) {
+  try {
+    const r = await gasCall({ action: 'list', prefix });
+    return (r && r.keys) ? r.keys : [];
+  } catch (e) { console.error('kvListKeys failed', prefix, e); return []; }
+}
+async function kvResetAll() {
+  try { await gasCall({ action: 'resetAll' }); } catch (e) { /* ignore */ }
+}
+
+// ==================== Data refresh ====================
+async function refreshRoster() {
+  const keys = await kvListKeys('dk_participant:');
+  const list = [];
+  for (const k of keys) {
+    const val = await kvGet(k);
+    if (val) list.push(val);
+  }
+  list.sort((a, b) => a.joinedAt - b.joinedAt);
+  cache.participants = list;
+}
+async function refreshQuestions() {
+  cache.questions = await kvGet('dk_questions');
+}
+async function refreshAnsweredIds() {
+  const keys = await kvListKeys('dk_answers:');
+  cache.answeredIds = new Set(keys.map(k => k.replace('dk_answers:', '')));
+}
+async function refreshResultsData() {
+  const keys = await kvListKeys('dk_guesses:');
+  const allGuesses = {};
+  for (const k of keys) {
+    const gid = k.replace('dk_guesses:', '');
+    const val = await kvGet(k);
+    if (val) allGuesses[gid] = val;
+  }
+  cache.allGuesses = allGuesses;
+  cache.guessedIds = new Set(Object.keys(allGuesses));
+}
+
+// ==================== Derived phase ====================
+function myPhase() {
+  if (!me.id) return 'join';
+  if (!cache.questions) return 'lobby';
+  if (!cache.answeredIds.has(me.id)) return 'answering';
+  if (cache.answeredIds.size < cache.participants.length) return 'waitingAnswers';
+  if (!cache.guessedIds.has(me.id)) return 'guessing';
+  return 'results';
+}
+
+// ==================== Init & polling ====================
+async function init() {
+  if (GAS_ENDPOINT.indexOf('PASTE_YOUR') === 0) { renderApp(); return; }
+  ui.loading = true; renderApp();
+  await refreshRoster();
+  await refreshQuestions();
+  if (cache.questions) await refreshAnsweredIds();
+  ui.loading = false;
+  renderApp();
+  startPolling();
+}
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollTick, 4000);
+}
+async function pollTick() {
+  try {
+    if (!cache.questions) {
+      await refreshRoster();
+      await refreshQuestions();
+    } else if (me.id && cache.answeredIds.size < cache.participants.length) {
+      await refreshAnsweredIds();
+      await refreshRoster();
+    } else if (me.id && myPhase() === 'results') {
+      await refreshResultsData();
+    }
+  } catch (e) { console.error(e); }
+  const active = document.activeElement;
+  const isTyping = active && app.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (!isTyping) renderApp();
+}
+
+// ==================== Actions: join / lobby ====================
+async function registerNew() {
+  const input = document.getElementById('joinNameInput');
+  const val = input ? input.value.trim() : '';
+  if (!val) return;
+  if (cache.questions) { ui.joinError = 'もうゲームが始まっています。既存メンバーとして再開してください。'; renderApp(); return; }
+  const id = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const participant = { id, name: val, joinedAt: Date.now() };
+  ui.loading = true; renderApp();
+  const ok = await kvSet('dk_participant:' + id, participant);
+  ui.loading = false;
+  if (ok) {
+    me.id = id; me.name = val;
+    await refreshRoster();
+    renderApp();
+    startPolling();
+  } else {
+    ui.joinError = '登録に失敗しました。もう一度お試しください。';
+    renderApp();
+  }
+}
+function goToStart() {
+  me = { id: null, name: null };
+  renderApp();
+}
+function backLinkHtml() {
+  return `<button class="back-link" onclick="goToStart()">← 最初の画面</button>`;
+}
+function resumeAs(id) {
+  const p = cache.participants.find(x => x.id === id);
+  if (!p) return;
+  me.id = p.id; me.name = p.name;
+  renderApp();
+  startPolling();
+}
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    ui.copied = true; renderApp();
+    setTimeout(() => { ui.copied = false; renderApp(); }, 1800);
+  } catch (e) { /* clipboard blocked; the visible link field is the fallback */ }
+}
+async function startGame() {
+  ui.loading = true; renderApp();
+  const existing = await kvGet('dk_questions');
+  if (!existing) {
+    await kvSet('dk_questions', FIXED_QUESTIONS);
+  }
+  await refreshQuestions();
+  ui.loading = false;
+  renderApp();
+}
+async function manualRefreshLobby() {
+  await refreshRoster();
+  await refreshQuestions();
+  renderApp();
+}
+
+// ==================== Actions: answering ====================
+async function submitMyAnswers() {
+  const answers = {};
+  cache.questions.forEach(q => {
+    const el = document.getElementById('ans_' + q.id);
+    const val = el ? el.value.trim() : '';
+    answers[q.id] = val;
+  });
+  ui.answerError = null;
+  ui.loading = true; renderApp();
+  const ok = await kvSet('dk_answers:' + me.id, answers);
+  ui.loading = false;
+  if (ok) {
+    cache.answeredIds.add(me.id);
+    await refreshRoster();
+    renderApp();
+  } else {
+    ui.answerError = '送信に失敗しました。もう一度お試しください。';
+    renderApp();
+  }
+}
+async function manualRefreshWaiting() {
+  await refreshAnsweredIds();
+  await refreshRoster();
+  renderApp();
+}
+
+// ==================== Actions: guessing ====================
+async function triggerGuessSetup() {
+  if (guessSetupInFlight) return;
+  guessSetupInFlight = true;
+  ui.loading = true; renderApp();
+  const others = cache.participants.filter(p => p.id !== me.id);
+  const queue = [];
+  for (const p of others) {
+    const ans = await kvGet('dk_answers:' + p.id);
+    queue.push({ pid: p.id, answers: ans || {} });
+  }
+  ui.guessQueue = shuffle(queue);
+  ui.guessIndex = 0;
+  ui.assignments = {};
+  ui.remainingCandidates = others.map(p => p.id);
+  ui.loading = false;
+  guessSetupInFlight = false;
+  renderApp();
+}
+function makeGuessChoice(candidateId) {
+  const idx = ui.guessIndex;
+  const target = ui.guessQueue[idx];
+  if (ui.assignments[target.pid]) return;
+  const correct = candidateId === target.pid;
+  ui.assignments[target.pid] = { guessedId: candidateId, correct };
+  ui.remainingCandidates = ui.remainingCandidates.filter(id => id !== target.pid);
+  renderApp();
+}
+async function nextGuessSet() {
+  if (ui.guessIndex + 1 < ui.guessQueue.length) {
+    ui.guessIndex++;
+    renderApp();
+  } else {
+    ui.loading = true; renderApp();
+    const payload = {};
+    Object.keys(ui.assignments).forEach(targetId => {
+      payload[targetId] = ui.assignments[targetId].guessedId;
+    });
+    const ok = await kvSet('dk_guesses:' + me.id, payload);
+    if (ok) cache.guessedIds.add(me.id);
+    ui.loading = false;
+    renderApp();
+  }
+}
+
+// ==================== Actions: results ====================
+async function triggerResultsLoad() {
+  if (resultsLoadInFlight) return;
+  resultsLoadInFlight = true;
+  await refreshResultsData();
+  cache.resultsLoaded = true;
+  resultsLoadInFlight = false;
+  renderApp();
+}
+async function manualRefreshResults() {
+  await refreshResultsData();
+  renderApp();
+}
+function computeResults() {
+  const participants = cache.participants;
+  const allGuesses = cache.allGuesses || {};
+  const matrix = {};
+  const guesserStats = {};
+  const targetStats = {};
+  participants.forEach(p => {
+    guesserStats[p.id] = { correct: 0, total: 0, submitted: !!allGuesses[p.id] };
+    targetStats[p.id] = { correct: 0, total: 0 };
+    matrix[p.id] = {};
+  });
+  participants.forEach(g => {
+    participants.forEach(t => {
+      if (g.id === t.id) { matrix[g.id][t.id] = 'self'; return; }
+      const guessesByG = allGuesses[g.id];
+      if (!guessesByG || guessesByG[t.id] === undefined) { matrix[g.id][t.id] = 'pending'; return; }
+      const isCorrect = guessesByG[t.id] === t.id;
+      matrix[g.id][t.id] = isCorrect ? 'correct' : 'incorrect';
+      guesserStats[g.id].total++;
+      if (isCorrect) guesserStats[g.id].correct++;
+      targetStats[t.id].total++;
+      if (isCorrect) targetStats[t.id].correct++;
+    });
+  });
+  return { matrix, guesserStats, targetStats };
+}
+function computeAwards(guesserStats, targetStats, participants) {
+  let best = null, mostExposed = null, mostMystery = null;
+  participants.forEach(p => {
+    const gs = guesserStats[p.id];
+    if (gs.submitted && gs.total > 0) {
+      const acc = gs.correct / gs.total;
+      if (!best || acc > best.acc) best = { p, acc, correct: gs.correct, total: gs.total };
+    }
+    const ts = targetStats[p.id];
+    if (ts.total > 0) {
+      const exp = ts.correct / ts.total;
+      if (!mostExposed || exp > mostExposed.exp) mostExposed = { p, exp, correct: ts.correct, total: ts.total };
+      if (!mostMystery || exp < mostMystery.exp) mostMystery = { p, exp, correct: ts.correct, total: ts.total };
+    }
+  });
+  return { best, mostExposed, mostMystery };
+}
+async function resetSession() {
+  ui.loading = true; renderApp();
+  await kvResetAll();
+  me = { id: null, name: null };
+  cache = defaultCache();
+  ui = defaultUi();
+  ui.loading = false;
+  renderApp();
+}
+
+// ==================== QR code ====================
+function setupQrCode() {
+  const el = document.getElementById('qrcode');
+  if (!el || typeof QRCode === 'undefined') return;
+  el.innerHTML = '';
+  try {
+    new QRCode(el, {
+      text: window.location.href,
+      width: 168, height: 168,
+      colorDark: '#2B3A55', colorLight: '#FFFBF1',
+    });
+  } catch (e) { /* ignore */ }
+}
+
+// ==================== Screens ====================
+const screens = {};
+
+screens.loading = () => `
+<div class="container">
+  <div class="card center-card">
+    <div class="title-stamp">同</div>
+    <p class="hint">読み込み中…</p>
+  </div>
+</div>`;
+
+screens.setupNeeded = () => `
+<div class="container">
+  <div class="card">
+    <div class="title-stamp">同</div>
+    <div class="eyebrow">セットアップが必要です</div>
+    <h2 class="section-title">GASのURLがまだ設定されていません</h2>
+    <p class="hint">script.js の先頭にある <code>GAS_ENDPOINT</code> を、あなたがデプロイしたGoogle Apps ScriptウェブアプリのURL（.../exec で終わるもの）に書き換えてから、このページを開き直してください。</p>
+  </div>
+</div>`;
+
+screens.join = () => {
+  const already = cache.participants;
+  const gameStarted = !!cache.questions;
+  return `
+  <div class="container">
+    <div class="card">
+      <div class="title-stamp">同</div>
+      <div class="eyebrow">同級生 近況クイズ</div>
+      <h1 class="display-title">だれの近況？</h1>
+      <p class="lead">このリンクを開けば、自分のスマホでそのまま参加できます。回答も結果確認も自分の画面でOK。</p>
+
+      <div class="qr-box">
+        <div id="qrcode" class="qr-canvas"></div>
+        <div class="qr-caption">このQR、またはリンクを他のメンバーにも共有してね</div>
+        <div class="link-row">
+          <input class="link-input" readonly value="${escapeHtml(window.location.href)}" onclick="this.select()" />
+          <button class="btn-outline" onclick="copyLink()">${ui.copied ? '✓ コピー済' : 'コピー'}</button>
+        </div>
+      </div>
+
+      ${already.length ? `
+      <div class="resume-block">
+        <div class="qa-label">すでに参加している人（自分の名前があればタップ）</div>
+        <div class="chip-row">
+          ${already.map(p => `<button class="chip resume-chip" onclick="resumeAs('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${gameStarted ? `<p class="hint warn-hint">もうゲームが始まっています。新規登録はできません。自分の名前が上のリストにあれば、そこから再開してください。</p>` : `
+      <div class="input-row">
+        <input id="joinNameInput" type="text" placeholder="例：やまだ たろう" onkeydown="if(event.key==='Enter'){registerNew();}" />
+        <button class="btn-primary" onclick="registerNew()">参加する</button>
+      </div>
+      ${ui.joinError ? `<p class="error-text">${escapeHtml(ui.joinError)}</p>` : ''}
+      `}
+    </div>
+  </div>`;
+};
+
+screens.lobby = () => {
+  const n = cache.participants.length;
+  return `
+  <div class="container">
+    <div class="card">
+      ${backLinkHtml()}
+      <div class="eyebrow">ロビー</div>
+      <h2 class="section-title">${escapeHtml(me.name)}さん、ようこそ！</h2>
+      <p class="hint">参加者が揃ったらスタートしましょう（3人以上必要）。質問は次の3つで固定です。</p>
+      <div class="count-note">現在の参加者：${n}人</div>
+      <div class="chip-row">
+        ${cache.participants.map(p => `<span class="chip static-chip">${escapeHtml(p.name)}${p.id === me.id ? '（自分）' : ''}</span>`).join('')}
+      </div>
+      <div class="preset-list">
+        ${FIXED_QUESTIONS.map(q => `
+          <div class="preset-item selected">
+            <div class="preset-check">✓</div>
+            <div class="preset-text"><div class="preset-q">${escapeHtml(q.text)}</div></div>
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn-primary" ${n < 3 ? 'disabled' : ''} onclick="startGame()">${n < 3 ? 'あと' + (3 - n) + '人必要です' : 'スタートする'}</button>
+      <button class="btn-outline refresh-btn" onclick="manualRefreshLobby()">更新する</button>
+    </div>
+  </div>`;
+};
+
+screens.answering = () => `
+<div class="container">
+  <div class="card">
+    ${backLinkHtml()}
+    <div class="eyebrow">こっそり回答（${escapeHtml(me.name)}さん）</div>
+    <h2 class="section-title">3つの質問に答えてね</h2>
+    <p class="hint">周りに見られないように、こっそり入力してください。答えたくないものは空欄でもOKです。</p>
+    <div class="question-form">
+      ${cache.questions.map(q => `
+        <div class="qa-block">
+          <label class="qa-label">${escapeHtml(q.text)}</label>
+          <textarea id="ans_${q.id}" class="ruled-input" rows="2" placeholder="空欄でもOK"></textarea>
+        </div>
+      `).join('')}
+    </div>
+    ${ui.answerError ? `<p class="error-text">${escapeHtml(ui.answerError)}</p>` : ''}
+    <button class="btn-primary" onclick="submitMyAnswers()">回答を確定する</button>
+  </div>
+</div>`;
+
+screens.waitingAnswers = () => `
+<div class="container">
+  <div class="card center-card">
+    ${backLinkHtml()}
+    <div class="eyebrow">回答フェーズ</div>
+    <h2 class="section-title">他のメンバーを待っています…</h2>
+    <div class="score-big small-score">${cache.answeredIds.size} / ${cache.participants.length}</div>
+    <p class="hint">全員が回答すると、自動で「当てっこ」が始まります。</p>
+    <button class="btn-outline" onclick="manualRefreshWaiting()">更新する</button>
+  </div>
+</div>`;
+
+screens.guessing = () => {
+  const idx = ui.guessIndex;
+  const total = ui.guessQueue.length;
+  const target = ui.guessQueue[idx];
+  const done = ui.assignments[target.pid];
+  const qs = cache.questions;
+  const candHtml = ui.remainingCandidates.map(id => {
+    const p = cache.participants.find(x => x.id === id);
+    return `<button class="guess-chip" onclick="makeGuessChoice('${id}')">${escapeHtml(p ? p.name : '?')}</button>`;
+  }).join('');
+  let revealHtml = '';
+  if (done) {
+    const trueP = cache.participants.find(x => x.id === target.pid);
+    revealHtml = `
+      <div class="stamp-wrap"><div class="stamp ${done.correct ? '' : 'miss'}">${done.correct ? '正解！' : 'ハズレ'}</div></div>
+      <p class="reveal-text">答えは <strong>${escapeHtml(trueP.name)}</strong> さんでした</p>
+      <button class="btn-primary" onclick="nextGuessSet()">${idx + 1 === total ? '結果を見る' : '次のセットへ'}</button>
+    `;
+  }
+  const progressPct = Math.round(((idx + (done ? 1 : 0)) / total) * 100);
+  return `
+  <div class="container">
+    <div class="card">
+      ${backLinkHtml()}
+      <div class="eyebrow">第 ${idx + 1} セット / 全 ${total} セット</div>
+      <div class="progress-track"><div class="progress-fill" style="width:${progressPct}%"></div></div>
+      <p class="hint">この3つの答えは、だれのもの？</p>
+      <div class="answer-set">
+        ${qs.map(q => {
+          const ans = (target.answers[q.id] || '').trim();
+          return `
+          <div class="set-item">
+            <div class="q-label">Q. ${escapeHtml(q.text)}</div>
+            <div class="answer-card small-answer">${ans ? '「' + escapeHtml(ans) + '」' : '<span class="no-answer">（無回答）</span>'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${done ? '' : `<div class="guess-grid">${candHtml}</div>`}
+      ${revealHtml}
+    </div>
+  </div>`;
+};
+
+screens.results = () => {
+  const { matrix, guesserStats, targetStats } = computeResults();
+  const { best, mostExposed, mostMystery } = computeAwards(guesserStats, targetStats, cache.participants);
+  const myStats = guesserStats[me.id] || { correct: 0, total: 0 };
+  const submittedCount = Object.values(guesserStats).filter(s => s.submitted).length;
+
+  const tableHead = `<tr><th class="corner">予想＼対象</th>${cache.participants.map(p => `<th>${escapeHtml(shortName(p.name))}</th>`).join('')}</tr>`;
+  const tableRows = cache.participants.map(g => {
+    const cells = cache.participants.map(t => {
+      const cellType = matrix[g.id][t.id];
+      const symbol = cellType === 'self' ? '' : cellType === 'correct' ? '○' : cellType === 'incorrect' ? '×' : '－';
+      return `<td class="${cellType}">${symbol}</td>`;
+    }).join('');
+    return `<tr><th class="row-head">${escapeHtml(g.name)}</th>${cells}</tr>`;
+  }).join('');
+
+  const showMystery = mostMystery && (!mostExposed || mostMystery.p.id !== mostExposed.p.id);
+
+  return `
+  <div class="container">
+    <div class="card">
+      ${backLinkHtml()}
+      <div class="eyebrow">RESULT</div>
+      <h2 class="display-title">結果発表</h2>
+      <p class="hint">予想が終わった人：${submittedCount} / ${cache.participants.length}人</p>
+
+      ${myStats.total > 0 ? `<div class="score-big small-score">${myStats.correct} / ${myStats.total}<span class="score-unit">あなたの正解</span></div>` : ''}
+
+      ${best ? `<div class="award-row"><div class="award-badge">🎯 探偵賞</div><div class="award-name">${escapeHtml(best.p.name)}さん</div><div class="award-sub">正解率 ${Math.round(best.acc * 100)}%（${best.correct}/${best.total}）</div></div>` : ''}
+      ${mostExposed ? `<div class="award-row"><div class="award-badge">📣 バレバレ賞</div><div class="award-name">${escapeHtml(mostExposed.p.name)}さん</div><div class="award-sub">${mostExposed.correct}/${mostExposed.total}人に当てられました</div></div>` : ''}
+      ${showMystery ? `<div class="award-row"><div class="award-badge">🕵️ ミステリー賞</div><div class="award-name">${escapeHtml(mostMystery.p.name)}さん</div><div class="award-sub">${mostMystery.correct}/${mostMystery.total}人しか当てられませんでした</div></div>` : ''}
+
+      <div class="qa-label table-title">全員の対戦表（縦＝予想した人／横＝答えた人）</div>
+      <div class="league-wrap">
+        <table class="league">${tableHead}${tableRows}</table>
+      </div>
+
+      <button class="btn-outline" onclick="manualRefreshResults()">更新する</button>
+
+      ${ui.confirmingReset ? `
+        <div class="reset-confirm">
+          <p class="hint">全員のデータを削除して最初からやり直します。よろしいですか？</p>
+          <div class="btn-row">
+            <button class="btn-outline" onclick="ui.confirmingReset=false; renderApp();">キャンセル</button>
+            <button class="btn-primary" onclick="resetSession()">削除してやり直す</button>
+          </div>
+        </div>
+      ` : `<button class="btn-outline reset-btn" onclick="ui.confirmingReset=true; renderApp();">最初からやり直す</button>`}
+    </div>
+  </div>`;
+};
+
+// ==================== Render dispatch ====================
+function renderScreen() {
+  if (GAS_ENDPOINT.indexOf('PASTE_YOUR') === 0) return screens.setupNeeded();
+  if (ui.loading) return screens.loading();
+  const phase = myPhase();
+  if (phase === 'join') return screens.join();
+  if (phase === 'lobby') return screens.lobby();
+  if (phase === 'answering') return screens.answering();
+  if (phase === 'waitingAnswers') return screens.waitingAnswers();
+  if (phase === 'guessing') {
+    if (ui.guessQueue.length === 0) { triggerGuessSetup(); return screens.loading(); }
+    return screens.guessing();
+  }
+  if (phase === 'results') {
+    if (!cache.resultsLoaded) { triggerResultsLoad(); return screens.loading(); }
+    return screens.results();
+  }
+  return screens.loading();
+}
+function renderApp() {
+  app.innerHTML = renderScreen();
+  if (!ui.loading && myPhase() === 'join') setupQrCode();
+}
+
+init();
+
+</script>
+</body>
+</html>
